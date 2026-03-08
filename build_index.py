@@ -12,7 +12,13 @@ DB_DIR = "vector_db"
 def load_slokas():
     """Load all sloka data from JSON files."""
     slokas = []
-    sources = ["bhagavad_gita.json"]
+    sources = [
+        "bhagavad_gita.json",
+        "yoga_sutras.json",
+        "chanakya_niti.json",
+        "upanishads.json",
+        "subhashitas.json",
+    ]
 
     for source_file in sources:
         path = f"{DATA_DIR}/{source_file}"
