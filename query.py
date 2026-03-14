@@ -134,32 +134,54 @@ def _call_openai(client, user_query, slokas):
 
 
 def format_slokas_locally(user_query, slokas):
-    """Format slokas without an LLM — pure retrieval output."""
+    """Format slokas without an LLM — rich retrieval output."""
+    difficulty_badge = {"beginner": "★", "intermediate": "★★", "advanced": "★★★"}
+    top = slokas[:3]
+
+    # Gather unique sources
+    sources = list(dict.fromkeys(s["source"] for s in top))
+    source_str = ", ".join(sources)
+
     lines = [
-        f"\n{'='*60}",
-        f"  Recommended Slokas for your situation",
-        f"{'='*60}\n",
+        f"",
+        f"  ╔{'═'*58}╗",
+        f"  ║  Wisdom for: {user_query[:42]:<42} ║",
+        f"  ╚{'═'*58}╝",
+        f"",
+        f"  Sources: {source_str}",
+        f"",
     ]
 
-    for i, s in enumerate(slokas[:3], 1):
-        lines.append(f"  [{i}] {s['id']} — {s['source']} (Ch.{s['chapter']}, V.{s['verse']})")
-        lines.append(f"  Path: {s['path'].replace('_', ' ').title()}")
-        lines.append(f"  Relevance: {s['relevance_score']}")
+    for i, s in enumerate(top, 1):
+        path_label = s["path"].replace("_", " ").title()
+        badge = difficulty_badge.get(s["difficulty"], "★")
+        score_pct = int(s["relevance_score"] * 100)
+        themes = ", ".join(t.replace("_", " ") for t in s["life_themes"][:4])
+
+        lines.append(f"  ┌─ [{i}] {s['source']} — {s['id']} ─────────────────")
+        lines.append(f"  │  Path: {path_label}  |  Level: {badge} {s['difficulty'].title()}  |  Match: {score_pct}%")
+        lines.append(f"  │")
+        lines.append(f"  │  Sanskrit:")
+        lines.append(f"  │    {s['sanskrit']}")
+        lines.append(f"  │")
+        lines.append(f"  │  Pronunciation:")
+        lines.append(f"  │    {s['transliteration']}")
+        lines.append(f"  │")
+        lines.append(f"  │  Meaning:")
+        lines.append(f"  │    {s['english_meaning']}")
+        lines.append(f"  │")
+        lines.append(f"  │  How this helps you:")
+        lines.append(f"  │    {s['when_to_use']}")
+        lines.append(f"  │")
+        lines.append(f"  │  Themes: {themes}")
+        lines.append(f"  └{'─'*58}")
         lines.append(f"")
-        lines.append(f"  Sanskrit:")
-        lines.append(f"    {s['sanskrit']}")
-        lines.append(f"")
-        lines.append(f"  Transliteration:")
-        lines.append(f"    {s['transliteration']}")
-        lines.append(f"")
-        lines.append(f"  Meaning:")
-        lines.append(f"    {s['english_meaning']}")
-        lines.append(f"")
-        lines.append(f"  Why this helps you:")
-        lines.append(f"    {s['when_to_use']}")
-        lines.append(f"")
-        lines.append(f"  {'—'*40}")
-        lines.append(f"")
+
+    # Summary footer
+    all_paths = list(dict.fromkeys(s["path"].replace("_", " ").title() for s in top))
+    lines.append(f"  Paths covered: {', '.join(all_paths)}")
+    lines.append(f"  Tip: Try 'path:<name>' to explore a specific yoga path.")
+    lines.append(f"")
 
     return "\n".join(lines)
 
