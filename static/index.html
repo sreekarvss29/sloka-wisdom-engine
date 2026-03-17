@@ -251,11 +251,75 @@
             border-left: 3px solid rgba(240, 194, 127, 0.3);
         }
 
+        .easy-pronounce {
+            color: #e0d0f0;
+            font-size: 1rem;
+            line-height: 1.7;
+            padding: 10px 14px;
+            background: rgba(180, 140, 255, 0.06);
+            border-radius: 8px;
+            border-left: 3px solid rgba(180, 140, 255, 0.25);
+            margin-bottom: 8px;
+            letter-spacing: 0.3px;
+        }
+
+        .easy-pronounce-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8878a8;
+            margin-bottom: 4px;
+        }
+
+        .iast-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            margin-bottom: 14px;
+            cursor: pointer;
+        }
+
+        .iast-toggle {
+            font-size: 0.75rem;
+            color: #666;
+            padding: 4px 10px;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .iast-toggle:hover {
+            color: #999;
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .iast-text {
+            font-style: italic;
+            color: #888;
+            font-size: 0.85rem;
+            display: none;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+            flex: 1;
+        }
+
+        .iast-text.visible {
+            display: block;
+        }
+
         .pronunciation-row {
             display: flex;
             align-items: flex-start;
             gap: 10px;
             margin-bottom: 14px;
+        }
+
+        .pronunciation-row .pronunciation-text {
+            flex: 1;
         }
 
         .pronunciation-row .transliteration {
@@ -475,6 +539,50 @@
             }
         }
 
+        // Convert IAST transliteration to easy English phonetic spelling
+        function iastToPhonetic(iast) {
+            let text = iast;
+
+            // Multi-char replacements first
+            const multiMap = [
+                [/śr/g, 'shr'], [/Śr/g, 'Shr'],
+                [/ṣṭ/g, 'sht'], [/ṣṭh/g, 'shth'],
+            ];
+            for (const [from, to] of multiMap) {
+                text = text.replace(from, to);
+            }
+
+            // Single-char IAST → phonetic
+            const charMap = {
+                'ā': 'aa', 'ī': 'ee', 'ū': 'oo',
+                'ṛ': 'ri', 'ṝ': 'ri', 'ḷ': 'lri',
+                'ṃ': 'm', 'ṁ': 'm', 'ḥ': 'h',
+                'ṅ': 'ng', 'ñ': 'ny',
+                'ṭ': 't', 'ḍ': 'd', 'ṇ': 'n',
+                'ś': 'sh', 'ṣ': 'sh',
+                'c': 'ch',
+                'Ā': 'Aa', 'Ī': 'Ee', 'Ū': 'Oo',
+                'Ṛ': 'Ri', 'Ṝ': 'Ri',
+                'Ṃ': 'M', 'Ṁ': 'M', 'Ḥ': 'H',
+                'Ṅ': 'Ng', 'Ñ': 'Ny',
+                'Ṭ': 'T', 'Ḍ': 'D', 'Ṇ': 'N',
+                'Ś': 'Sh', 'Ṣ': 'Sh',
+                'C': 'Ch',
+            };
+
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                const ch = text[i];
+                result += charMap[ch] || ch;
+            }
+
+            // Clean up: remove pipe separators, normalize spaces
+            result = result.replace(/\s*\|\|\s*/g, ' ').replace(/\s*\|\s*/g, ', ');
+            result = result.replace(/\s+/g, ' ').trim();
+
+            return result;
+        }
+
         function renderSloka(s) {
             slokaTextCache[s.id] = s.sanskrit;
             const diffStars = { beginner: '&#9733;', intermediate: '&#9733;&#9733;', advanced: '&#9733;&#9733;&#9733;' };
@@ -483,6 +591,9 @@
             const themes = s.life_themes.slice(0, 5).map(t =>
                 `<span class="theme-tag">${t.replace(/_/g, ' ')}</span>`
             ).join('');
+
+            const easyPronounce = iastToPhonetic(s.transliteration);
+            const cardId = s.id.replace(/\./g, '_');
 
             return `
                 <div class="sloka-card">
@@ -496,8 +607,15 @@
                     </div>
 
                     <div class="sanskrit">${s.sanskrit}</div>
+
+                    <div class="easy-pronounce-label">Read as (English)</div>
+                    <div class="easy-pronounce">${easyPronounce}</div>
+
                     <div class="pronunciation-row">
-                        <div class="transliteration">${s.transliteration}</div>
+                        <div class="pronunciation-text">
+                            <span class="iast-toggle" onclick="toggleIast('${cardId}')">Show IAST notation</span>
+                            <div class="iast-text" id="iast_${cardId}">${s.transliteration}</div>
+                        </div>
                         <div class="audio-controls">
                             <button class="btn-audio" onclick="playBrowserTTS('${s.id}', this)" title="Quick pronunciation (browser voice)">
                                 &#9654; Voice
@@ -517,6 +635,11 @@
                     <div class="themes">${themes}</div>
                 </div>
             `;
+        }
+
+        function toggleIast(cardId) {
+            const el = document.getElementById('iast_' + cardId);
+            if (el) el.classList.toggle('visible');
         }
 
         // --- Audio Pronunciation ---
