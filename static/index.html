@@ -251,6 +251,54 @@
             border-left: 3px solid rgba(240, 194, 127, 0.3);
         }
 
+        .pronunciation-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .pronunciation-row .transliteration {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .audio-controls {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+            padding-top: 2px;
+        }
+
+        .btn-audio {
+            background: rgba(240, 194, 127, 0.12);
+            border: 1px solid rgba(240, 194, 127, 0.25);
+            color: #f0c27f;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-audio:hover {
+            background: rgba(240, 194, 127, 0.2);
+            border-color: rgba(240, 194, 127, 0.4);
+        }
+
+        .btn-audio:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-audio.playing {
+            background: rgba(240, 194, 127, 0.25);
+            border-color: #f0c27f;
+        }
+
         .transliteration {
             font-style: italic;
             color: #b0b0c0;
@@ -401,6 +449,7 @@
                 if (path) params.set('path', path);
 
                 const res = await fetch(`${API}/api/search?${params}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
 
                 status.classList.remove('visible');
@@ -411,9 +460,15 @@
                 document.getElementById('resultsMeta').textContent =
                     `from ${data.sources.join(', ')}`;
 
-                resultsDiv.innerHTML = data.slokas.map(renderSloka).join('');
+                try {
+                    resultsDiv.innerHTML = data.slokas.map(renderSloka).join('');
+                } catch (renderErr) {
+                    console.error('Render error:', renderErr);
+                    resultsDiv.innerHTML = `<p style="color:#e77; text-align:center;">Error rendering results. Check console.</p>`;
+                }
             } catch (e) {
                 status.classList.remove('visible');
+                console.error('Fetch error:', e);
                 resultsDiv.innerHTML = `<p style="color:#e77; text-align:center;">Failed to fetch results. Is the API running?</p>`;
             } finally {
                 btn.disabled = false;
@@ -421,6 +476,7 @@
         }
 
         function renderSloka(s) {
+            slokaTextCache[s.id] = s.sanskrit;
             const diffStars = { beginner: '&#9733;', intermediate: '&#9733;&#9733;', advanced: '&#9733;&#9733;&#9733;' };
             const matchPct = Math.round(s.relevance_score * 100);
             const pathLabel = s.path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -440,7 +496,17 @@
                     </div>
 
                     <div class="sanskrit">${s.sanskrit}</div>
-                    <div class="transliteration">${s.transliteration}</div>
+                    <div class="pronunciation-row">
+                        <div class="transliteration">${s.transliteration}</div>
+                        <div class="audio-controls">
+                            <button class="btn-audio" onclick="playBrowserTTS('${s.id}', this)" title="Quick pronunciation (browser voice)">
+                                &#9654; Voice
+                            </button>
+                            <button class="btn-audio" onclick="playServerAudio('${s.id}', this)" title="HD pronunciation (generated audio)">
+                                &#9654; HD
+                            </button>
+                        </div>
+                    </div>
 
                     <div class="section-label">Meaning</div>
                     <div class="meaning">${s.english_meaning}</div>
@@ -452,6 +518,137 @@
                 </div>
             `;
         }
+
+        // --- Audio Pronunciation ---
+
+        const slokaTextCache = {};
+        let isPlaying = false;
+        let currentAudioObj = null;  // Audio element for HD
+        let currentBtnRef = null;
+        let currentType = null;      // 'tts' or 'hd'
+
+        function resetBtn() {
+            if (currentBtnRef) {
+                currentBtnRef.classList.remove('playing');
+                currentBtnRef.innerHTML = currentBtnRef.dataset.label || '&#9654; Play';
+                currentBtnRef.disabled = false;
+                currentBtnRef = null;
+            }
+        }
+
+        function stopAll() {
+            // Stop browser TTS
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel();
+            }
+            // Stop HD audio
+            if (currentAudioObj) {
+                currentAudioObj.pause();
+                currentAudioObj.removeAttribute('src');
+                currentAudioObj.load();
+                currentAudioObj = null;
+            }
+            resetBtn();
+            isPlaying = false;
+            currentType = null;
+        }
+
+        function playBrowserTTS(slokaId, btn) {
+            // Toggle: if this button is already playing, just stop
+            if (isPlaying && currentBtnRef === btn) {
+                stopAll();
+                return;
+            }
+
+            // Stop anything else first
+            stopAll();
+
+            const text = slokaTextCache[slokaId];
+            if (!text) return;
+
+            if (!('speechSynthesis' in window)) {
+                alert('Browser TTS not supported. Try the HD button.');
+                return;
+            }
+
+            // Save original label and switch to Stop
+            btn.dataset.label = btn.innerHTML;
+            btn.innerHTML = '&#9632; Stop';
+            btn.classList.add('playing');
+            currentBtnRef = btn;
+            isPlaying = true;
+            currentType = 'tts';
+
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.rate = 0.7;
+            utter.pitch = 1.0;
+
+            const voices = speechSynthesis.getVoices();
+            const hindiVoice = voices.find(v => v.lang.startsWith('hi')) ||
+                               voices.find(v => v.lang.startsWith('sa')) ||
+                               voices.find(v => v.lang.startsWith('en'));
+            if (hindiVoice) utter.voice = hindiVoice;
+
+            utter.onend = () => { stopAll(); };
+            utter.onerror = () => { stopAll(); };
+
+            speechSynthesis.speak(utter);
+        }
+
+        function playServerAudio(slokaId, btn) {
+            // Toggle: if this button is already playing, just stop
+            if (isPlaying && currentBtnRef === btn) {
+                stopAll();
+                return;
+            }
+
+            // Stop anything else first
+            stopAll();
+
+            btn.dataset.label = btn.innerHTML;
+            btn.innerHTML = '&#8987; Loading...';
+            btn.disabled = true;
+            btn.classList.add('playing');
+            currentBtnRef = btn;
+            isPlaying = true;
+            currentType = 'hd';
+
+            const audio = new Audio();
+            currentAudioObj = audio;
+
+            // Use 'loadeddata' instead of 'canplaythrough' to avoid repeated fires
+            let started = false;
+            audio.addEventListener('loadeddata', () => {
+                if (started) return;
+                started = true;
+                btn.innerHTML = '&#9632; Stop';
+                btn.disabled = false;
+                audio.play().catch(() => { stopAll(); });
+            });
+
+            audio.addEventListener('ended', () => { stopAll(); });
+            audio.addEventListener('pause', () => {
+                // Only reset if we intentionally stopped (not just buffering)
+                if (!audio.ended && isPlaying && currentAudioObj === audio) return;
+                stopAll();
+            });
+            audio.addEventListener('error', () => {
+                stopAll();
+                // Fallback to browser TTS
+                playBrowserTTS(slokaId, btn);
+            });
+
+            audio.src = `${API}/api/audio/${encodeURIComponent(slokaId)}`;
+            audio.load();
+        }
+
+        // Load voices (some browsers load async)
+        if ('speechSynthesis' in window) {
+            speechSynthesis.getVoices();
+            speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+        }
+
+        // --- End Audio ---
 
         document.getElementById('query').addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) {
